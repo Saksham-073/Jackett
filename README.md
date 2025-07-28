@@ -212,11 +212,3 @@ Enable browser developer tools to see detailed error messages and API responses.
 ##  Support
 
 **Note**: This application is designed to work with Jackett, which aggregates torrent indexers. Please ensure you comply with your local laws and the terms of service of the indexers you use.
-# Jackett
-# Jackett
-# Jackett
-# Jackett
-# Jackett
-# Jackett
-# Jackett
-# Jackett
