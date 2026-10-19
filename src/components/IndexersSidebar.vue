@@ -5,6 +5,7 @@ import { toast } from "vue3-toastify";
 import "vue3-toastify/dist/index.css";
 import { useIndexersStore } from "@/stores/indexers";
 import IndexerModal from "./IndexerModal.vue";
+import { getJackettSettings } from "@/Utlis/settings";
 
 const props = defineProps<{ show: boolean }>();
 const emit = defineEmits(["close", "indexers-updated"]);
@@ -14,13 +15,10 @@ const indexersStore = useIndexersStore();
 const isLoadingAll = ref(false);
 const errorAll = ref("");
 const showAddModal = ref(false);
-let tempSelectedIndexerIds: string[] = [];
+const tempSelectedIndexerIds = ref<string[]>([]);
 
 const testingId = ref("");
 const testResult = ref<{ [id: string]: string }>({});
-
-const baseUrl = localStorage.getItem("jackettBaseUrl") || "http://localhost:9117";
-const apiKey = localStorage.getItem("jackettApiKey") || "";
 
 const sidebarIndexers = computed(() =>
   indexersStore.allIndexers.filter((ix) => indexersStore.selectedIndexerIds.includes(ix.id))
@@ -30,10 +28,8 @@ async function fetchAllIndexers() {
   isLoadingAll.value = true;
   errorAll.value = "";
   try {
+    const { baseUrl, apiKey } = getJackettSettings();
     await indexersStore.fetchAllIndexers(baseUrl, apiKey);
-    if (indexersStore.selectedIndexerIds.length === 0 && indexersStore.allIndexers.length > 0) {
-      indexersStore.setSelectedIndexers(indexersStore.allIndexers.map((ix) => ix.id));
-    }
   } catch (err: any) {
     errorAll.value = err.message || "Failed to fetch indexers.";
     toast.error("Failed to fetch indexers: " + err.message);
@@ -49,12 +45,12 @@ onMounted(async () => {
 
 function openAddModal() {
   fetchAllIndexers();
-  tempSelectedIndexerIds = [...indexersStore.selectedIndexerIds];
+  tempSelectedIndexerIds.value = [...indexersStore.selectedIndexerIds];
   showAddModal.value = true;
 }
 
 function handleModalSave() {
-  indexersStore.setSelectedIndexers([...tempSelectedIndexerIds]);
+  indexersStore.setSelectedIndexers([...tempSelectedIndexerIds.value]);
   showAddModal.value = false;
   toast.success("Indexer selection saved successfully!");
   emit("indexers-updated");
@@ -75,8 +71,8 @@ async function testIndexer(id: string) {
       toast.error(`Indexer "${id}" is not configured and cannot be tested.`);
       return;
     }
-    const cleanBaseUrl = baseUrl.replace(/\/+$/, "");
-    const url = `${cleanBaseUrl}/api/v2.0/indexers/${id}/results/torznab/api?t=caps&apikey=${apiKey}`;
+    const { baseUrl, apiKey } = getJackettSettings();
+    const url = `${baseUrl}/api/v2.0/indexers/${id}/results/torznab/api?t=caps&apikey=${apiKey}`;
     const res = await fetch(url);
     if (res.ok) {
       testResult.value[id] = "Success";
@@ -94,9 +90,9 @@ async function testIndexer(id: string) {
 }
 
 function removeIndexerFromSidebar(id: string) {
+  const indexerName = sidebarIndexers.value.find((ix) => ix.id === id)?.name || id;
   const updated = indexersStore.selectedIndexerIds.filter((i) => i !== id);
   indexersStore.setSelectedIndexers(updated);
-  const indexerName = sidebarIndexers.value.find((ix) => ix.id === id)?.name || id;
   toast.success(`"${indexerName}" removed from sidebar successfully!`);
 }
 </script>
@@ -167,7 +163,7 @@ function removeIndexerFromSidebar(id: string) {
         :is-saving="false"
         :save-error="''"
         @close="handleModalClose"
-        @update:selectedIndexerIds="(ids) => { tempSelectedIndexerIds = ids; }"
+        @update:selectedIndexerIds="(ids: string[]) => { tempSelectedIndexerIds = ids; }"
         @save="handleModalSave"
       />
     </div>

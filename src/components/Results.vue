@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { Icon } from "@iconify/vue";
 import { ref, computed, watch } from "vue";
+import { toast } from "vue3-toastify";
 import Pagination from "./Pagination.vue";
+import { openExternal } from "@/Utlis/settings";
 
 const props = defineProps<{ results: Array<any> }>();
 
@@ -71,20 +73,20 @@ function nextPage() {
   }
 }
 function handleDownload(item: any) {
-  const downloadUrl = item.link;
-  if (downloadUrl) {
-    window.open(downloadUrl, "_blank");
-  }
+  openExternal(item.downloadUrl || item.link || "");
 }
 function handleTitleClick(item: any) {
-  const detailsUrl = item.comments;
-  if (detailsUrl) {
-    window.open(detailsUrl, "_blank");
-  }
+  openExternal(item.comments || "");
 }
-function handleCopyLink(item: any) {
-  if (item.link) {
-    navigator.clipboard.writeText(item.link);
+async function handleCopyLink(item: any) {
+  const link = item.downloadUrl || item.link;
+  if (!link) return;
+  try {
+    // navigator.clipboard only exists in secure contexts (HTTPS or localhost).
+    await navigator.clipboard.writeText(link);
+    toast.success("Link copied!");
+  } catch {
+    toast.error("Could not copy link. Clipboard needs HTTPS or localhost.");
   }
 }
 </script>

@@ -5,15 +5,17 @@ import IndexersSidebar from "./IndexersSidebar.vue";
 import { Icon } from "@iconify/vue";
 import { RouterLink, RouterView } from "vue-router";
 import SettingsBar from "./SettingsBar.vue";
+import { getJackettSettings } from "@/Utlis/settings";
 
 const sidebarVisible = ref(false);
 const showSettingbar = ref(false);
 const indexersStore = useIndexersStore();
-const apiKey = localStorage.getItem("jackettApiKey") || "";
-const baseUrl = localStorage.getItem("jackettBaseUrl") || "http://localhost:9117";
-
 async function refreshIndexers() {
-  await indexersStore.fetchAllIndexers(baseUrl, apiKey);
+  const { baseUrl, apiKey } = getJackettSettings();
+  try {
+    await indexersStore.fetchAllIndexers(baseUrl, apiKey);
+    await indexersStore.fetchAllCategories(baseUrl, apiKey);
+  } catch {}
 }
 </script>
 
@@ -40,7 +42,7 @@ async function refreshIndexers() {
         <div @click="showSettingbar = true">
           <Icon icon="solar:settings-outline" width="24" height="24" class="mt-1 cursor-pointer" />
         </div>
-        <SettingsBar :show="showSettingbar" @close="showSettingbar = false" />
+        <SettingsBar :show="showSettingbar" @close="showSettingbar = false" @saved="refreshIndexers" />
       </div>
     </div>
   </nav>

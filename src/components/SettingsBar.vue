@@ -4,7 +4,7 @@ import { Icon } from "@iconify/vue";
 import { toast } from "vue3-toastify";
 
 const props = defineProps<{ show: boolean }>();
-const emit = defineEmits(["close"]);
+const emit = defineEmits(["close", "saved"]);
 
 const jackettBaseUrl = ref("");
 const jackettApiKey = ref("");
@@ -12,7 +12,7 @@ const isSaving = ref(false);
 const showApiKey = ref(false);
 
 onMounted(() => {
-  jackettBaseUrl.value = localStorage.getItem("jackettBaseUrl") || "http://192.168.225.101:9117";
+  jackettBaseUrl.value = localStorage.getItem("jackettBaseUrl") || " http://192.168.225.101:9117";
   jackettApiKey.value = localStorage.getItem("jackettApiKey") || "";
 });
 
@@ -34,6 +34,7 @@ function saveSettings() {
     jackettBaseUrl.value = cleanUrl;
     jackettApiKey.value = jackettApiKey.value.trim();
     toast.success("Settings saved successfully!");
+    emit("saved");
     emit("close");
   } catch (error: any) {
     toast.error("Failed to save settings: " + error.message);

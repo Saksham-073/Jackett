@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, computed, watch } from "vue";
 import Filters from "./Filters.vue";
 import { Icon } from "@iconify/vue";
 import Spinner from "./Spinner.vue";
 import ErrorMessage from "./Error.vue";
 import { useIndexersStore } from "@/stores/indexers";
 import categoryMapJson from "@/Utlis/categoryMap.json";
+import { getJackettSettings } from "@/Utlis/settings";
 import { XMLParser } from "fast-xml-parser";
 const categoryMap: Record<string, string> = categoryMapJson as Record<string, string>;
 
@@ -34,19 +35,17 @@ const currentFilters = ref<{ category: string; indexer: string }>({
   indexer: "All",
 });
 const lastSubmittedQuery = ref("");
-const apiKey = ref("");
-const baseUrl = ref("http://192.168.225.101:9117");
 const indexersStore = useIndexersStore();
 
 function getCategoryName(category: any): string {
-  const categoryId = Array.isArray(category) ? category[0] : category;
+  const categoryId = String(Array.isArray(category) ? category[0] : category);
   if (!categoryId || isNaN(Number(categoryId))) {
     return categoryId;
   }
   if (categoryMap[categoryId]) {
     return categoryMap[categoryId];
   }
-  const parentId = String(categoryId).substring(0, 4) + "0";
+  const parentId = String(Math.floor(Number(categoryId) / 1000) * 1000);
   if (categoryMap[parentId]) {
     return categoryMap[parentId];
   }
@@ -72,12 +71,11 @@ const filteredResults = computed(() => {
       item.category.toLowerCase().includes(currentFilters.value.category.toLowerCase());
     const indexerMatch =
       currentFilters.value.indexer === "All" || item.indexer === currentFilters.value.indexer;
-    const searchMatch =
-      !lastSubmittedQuery.value ||
-      item.name.toLowerCase().includes(lastSubmittedQuery.value.toLowerCase());
-    return inSidebar && categoryMatch && indexerMatch && searchMatch;
+    return inSidebar && categoryMatch && indexerMatch;
   });
 });
+
+watch(filteredResults, (results) => emit("search", results));
 
 function handleFilter(filters: { category: string; indexer: string }) {
   currentFilters.value = filters;
@@ -87,18 +85,16 @@ const isLoading = ref(false);
 const errorMessage = ref("");
 
 async function performSearch() {
-  apiKey.value = localStorage.getItem("jackettApiKey") || "";
-  baseUrl.value = localStorage.getItem("jackettBaseUrl") || "http://localhost:9117";
+  const { baseUrl, apiKey } = getJackettSettings();
   if (!searchQuery.value.trim()) {
     return;
   }
   lastSubmittedQuery.value = searchQuery.value.trim();
   isLoading.value = true;
   errorMessage.value = "";
-  const cleanBaseUrl = baseUrl.value.replace(/\/+$/, "");
-  const url = `${cleanBaseUrl}/api/v2.0/indexers/all/results/torznab/api?t=search&q=${encodeURIComponent(
+  const url = `${baseUrl}/api/v2.0/indexers/all/results/torznab/api?t=search&q=${encodeURIComponent(
     searchQuery.value
-  )}&apikey=${apiKey.value}`;
+  )}&apikey=${apiKey}`;
   try {
     const response = await fetch(url);
     if (!response.ok) {
@@ -113,12 +109,13 @@ async function performSearch() {
     const contentType = response.headers.get("content-type") || "";
     const responseText = await response.text();
     if (contentType.includes("application/json")) {
+      let jsonError;
       try {
-        const jsonError = JSON.parse(responseText);
-        throw new Error(`API Error: ${jsonError.message || jsonError.error || "Unknown error"}`);
-      } catch (parseError) {
+        jsonError = JSON.parse(responseText);
+      } catch {
         throw new Error(`Received JSON response instead of XML: ${responseText.substring(0, 200)}`);
       }
+      throw new Error(`API Error: ${jsonError.message || jsonError.error || "Unknown error"}`);
     }
     if (contentType.includes("text/html") || responseText.trim().startsWith("<!")) {
       throw new Error(
@@ -130,11 +127,13 @@ async function performSearch() {
         `Invalid response format. Expected XML but got: ${responseText.substring(0, 100)}`
       );
     }
-    const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "" });
+    const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "", parseTagValue: false });
     const json = parser.parse(responseText);
     const itemArr = json?.rss?.channel?.item || [];
     const items = Array.isArray(itemArr) ? itemArr : [itemArr];
     const results: Result[] = items.map((item: any) => {
+      const attrs: any[] = [].concat(item["torznab:attr"] || []);
+      const attr = (name: string) => attrs.find((a) => a.name === name)?.value;
       const indexerId = item.jackettindexer?.id || "";
       const indexerObj = indexersStore.allIndexers.find((ix) => ix.id === indexerId);
       return {
@@ -144,22 +143,15 @@ async function performSearch() {
         quality: "",
         size: item.size ? `${(parseInt(item.size) / 1024 ** 3).toFixed(2)} GB` : "",
         date: item.pubDate || "",
-        seeds: parseInt(
-          item["torznab:attr"]?.find?.((a: any) => a.name === "seeders")?.value || "0"
-        ),
-        peers: parseInt(item["torznab:attr"]?.find?.((a: any) => a.name === "peers")?.value || "0"),
-        downloadUrl:
-          item.link ||
-          item.enclosure?.url ||
-          item["torznab:attr"]?.find?.((a: any) => a.name === "downloadUrl")?.value ||
-          "",
+        seeds: parseInt(attr("seeders") || "0"),
+        peers: parseInt(attr("peers") || "0"),
+        downloadUrl: item.link || item.enclosure?.url || attr("downloadUrl") || attr("magneturl") || "",
         link: item.link || "",
         guid: item.guid || "",
         comments: item.comments || "",
       };
     });
     allResults.value = results;
-    emit("search", filteredResults.value);
   } catch (err: any) {
     errorMessage.value = `Failed to fetch results: ${err.message}`;
   } finally {
@@ -168,11 +160,14 @@ async function performSearch() {
 }
 
 onMounted(async () => {
-  apiKey.value = localStorage.getItem("jackettApiKey") || "";
-  baseUrl.value = localStorage.getItem("jackettBaseUrl") || "http://192.168.225.101:9117";
+  const { baseUrl, apiKey } = getJackettSettings();
   indexersStore.loadSelectedFromStorage();
-  await indexersStore.fetchAllIndexers(baseUrl.value, apiKey.value);
-  await indexersStore.fetchAllCategories(baseUrl.value, apiKey.value);
+  try {
+    await indexersStore.fetchAllIndexers(baseUrl, apiKey);
+    await indexersStore.fetchAllCategories(baseUrl, apiKey);
+  } catch (err: any) {
+    errorMessage.value = `Failed to load indexers: ${err.message}`;
+  }
 });
 </script>
 
@@ -214,7 +209,7 @@ onMounted(async () => {
       Search
     </button>
     <Filters
-      v-if="showFilters"
+      v-show="showFilters"
       class="w-full max-w-xs sm:max-w-lg lg:max-w-2xl mx-auto mt-4 sm:mt-6"
       @filter="handleFilter"
       :available-categories="availableCategories"
@@ -232,7 +227,11 @@ onMounted(async () => {
       v-if="!isLoading && !errorMessage && filteredResults.length === 0 && lastSubmittedQuery"
       class="mt-8 text-gray-500 text-center"
     >
-      No results found for your search.
+      {{
+        indexersStore.selectedIndexers.length === 0
+          ? "No indexers selected. Open Indexers to add some."
+          : "No results found for your search."
+      }}
     </div>
   </div>
 </template>

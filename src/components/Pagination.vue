@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from "vue";
+import { computed } from "vue";
 import { Icon } from "@iconify/vue";
 const props = defineProps<{
   currentPage: number;
@@ -23,7 +23,7 @@ const pagesToShow = computed(() => {
     for (let i = 1; i <= props.totalPages; i++) pages.push(i);
   } else {
     pages.push(1);
-    if (props.currentPage > 4) pages.push("...");
+    if (props.currentPage > 3) pages.push("...");
     for (let i = Math.max(2, props.currentPage - 1); i < props.currentPage; i++) {
       if (i < props.totalPages) pages.push(i);
     }
@@ -36,7 +36,7 @@ const pagesToShow = computed(() => {
     ) {
       if (i > 1 && i < props.totalPages) pages.push(i);
     }
-    if (props.currentPage < props.totalPages - 3) pages.push("...");
+    if (props.currentPage < props.totalPages - 2) pages.push("...");
     pages.push(props.totalPages);
   }
   return pages;
@@ -72,7 +72,7 @@ const pagesToShow = computed(() => {
             <span class="sr-only">Previous</span>
             <Icon icon="mdi:chevron-left" class="w-5 h-5" aria-hidden="true" />
           </button>
-          <template v-for="page in pagesToShow" :key="page + '-' + props.currentPage">
+          <template v-for="(page, idx) in pagesToShow" :key="page + '-' + idx">
             <span
               v-if="page === '...'"
               class="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-gray-300 ring-inset focus:outline-offset-0"
